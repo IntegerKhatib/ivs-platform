@@ -1,0 +1,12 @@
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+dotenv.config();
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json());
+import authRoutes from "./src/routes/auth.js";
+import channelRoutes from "./src/routes/channels.js";
+app.use("/api/auth", authRoutes);
+app.use("/api/channels", channelRoutes);
+app.listen(process.env.PORT || 3001, () => console.log("Server running on port 3001"));

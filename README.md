@@ -1,1 +1,0 @@
-# IVS Platform
