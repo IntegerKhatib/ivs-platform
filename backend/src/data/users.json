@@ -2,7 +2,7 @@
   {
     "id": "1",
     "email": "admin@example.com",
-    "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
+    "password": "PASTE_THE_HASH_HERE",
     "name": "Admin User"
   }
 ]
