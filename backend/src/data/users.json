@@ -1,8 +1,0 @@
-[
-  {
-    "id": "1",
-    "email": "admin@example.com",
-    "password": "PASTE_THE_HASH_HERE",
-    "name": "Admin User"
-  }
-]
