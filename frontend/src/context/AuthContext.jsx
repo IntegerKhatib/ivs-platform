@@ -7,21 +7,11 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Just check if a token exists in local storage
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
-
     if (token && savedUser) {
-      try {
-        // If it exists, trust it and log the user in instantly
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        // If the saved user data is corrupted, clear it
-        localStorage.clear();
-      }
+      try { setUser(JSON.parse(savedUser)); } catch (e) { localStorage.removeItem("token"); localStorage.removeItem("user"); }
     }
-    
-    // Finish loading
     setLoading(false);
   }, []);
 
@@ -40,7 +30,9 @@ export function AuthProvider({ children }) {
   };
   
   const logout = () => { 
-    localStorage.clear(); 
+    // FIX: Only remove login data, do NOT clear notifications!
+    localStorage.removeItem("token"); 
+    localStorage.removeItem("user"); 
     setUser(null); 
   };
 

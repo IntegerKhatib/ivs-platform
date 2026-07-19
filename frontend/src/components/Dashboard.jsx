@@ -11,31 +11,22 @@ export default function Dashboard() {
   const [newChannel, setNewChannel] = useState(null);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
 
-  // 1. Load notifications from LocalStorage on startup
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem(NOTIF_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Auto-delete anything older than 7 days immediately
       return parsed.filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
     }
     return [];
   });
 
-  // 2. Every time notifications change, save to LocalStorage (and clean up old ones)
   useEffect(() => {
     const cleanNotifs = notifications.filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
     localStorage.setItem(NOTIF_KEY, JSON.stringify(cleanNotifs));
   }, [notifications]);
 
   const addNotification = (message, type = "success") => {
-    const newNotif = {
-      id: Date.now(), 
-      message, 
-      type, 
-      timestamp: Date.now() // Crucial for 7-day calculation
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
+    setNotifications((prev) => [{ id: Date.now(), message, type, timestamp: Date.now() }, ...prev]);
   };
 
   const handleChannelCreated = (ch) => {
@@ -52,19 +43,12 @@ export default function Dashboard() {
           </div>
           IVS Platform
         </div>
-
         <div className="user-menu">
-          {/* Notification Bell */}
           <div className="notification-wrapper">
             <button className="notification-btn" onClick={() => setShowNotifMenu(!showNotifMenu)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              {notifications.length > 0 && (
-                <span className="notification-badge">{notifications.length}</span>
-              )}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              {notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}
             </button>
-
             {showNotifMenu && (
               <div className="notification-dropdown">
                 <div className="notification-header">Notifications</div>
@@ -84,15 +68,10 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-
-          <div className="user-info">
-            <div className="name">{user?.name}</div>
-            <div className="email">{user?.email}</div>
-          </div>
+          <div className="user-info"><div className="name">{user?.name}</div><div className="email">{user?.email}</div></div>
           <button className="btn btn-secondary btn-sm" onClick={logout}>Logout</button>
         </div>
       </header>
-
       <main className="dashboard-content">
         <h2 style={{marginBottom:'24px'}}>Channels</h2>
         <CreateChannel onCreated={handleChannelCreated} />
