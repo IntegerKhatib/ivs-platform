@@ -1,27 +1,46 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import CreateChannel from "./CreateChannel";
 import ChannelList from "./ChannelList";
 
+const NOTIF_KEY = 'ivs_platform_notifications';
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [newChannel, setNewChannel] = useState(null);
-  
-  // Notification State
-  const [notifications, setNotifications] = useState([]);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
 
+  // 1. Load notifications from LocalStorage on startup
+  const [notifications, setNotifications] = useState(() => {
+    const saved = localStorage.getItem(NOTIF_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Auto-delete anything older than 7 days immediately
+      return parsed.filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
+    }
+    return [];
+  });
+
+  // 2. Every time notifications change, save to LocalStorage (and clean up old ones)
+  useEffect(() => {
+    const cleanNotifs = notifications.filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
+    localStorage.setItem(NOTIF_KEY, JSON.stringify(cleanNotifs));
+  }, [notifications]);
+
   const addNotification = (message, type = "success") => {
-    const id = Date.now();
-    setNotifications((prev) => [
-      { id, message, type, time: new Date().toLocaleTimeString() },
-      ...prev,
-    ]);
+    const newNotif = {
+      id: Date.now(), 
+      message, 
+      type, 
+      timestamp: Date.now() // Crucial for 7-day calculation
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
   };
 
   const handleChannelCreated = (ch) => {
     setNewChannel(ch);
-    addNotification(`Channel "${ch.name}" created successfully!`, "create");
+    addNotification(`Channel "${ch.name}" created in ${ch.region}.`, "create");
   };
 
   return (
@@ -37,13 +56,9 @@ export default function Dashboard() {
         <div className="user-menu">
           {/* Notification Bell */}
           <div className="notification-wrapper">
-            <button 
-              className="notification-btn" 
-              onClick={() => setShowNotifMenu(!showNotifMenu)}
-            >
+            <button className="notification-btn" onClick={() => setShowNotifMenu(!showNotifMenu)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
               </svg>
               {notifications.length > 0 && (
                 <span className="notification-badge">{notifications.length}</span>
@@ -58,12 +73,10 @@ export default function Dashboard() {
                 ) : (
                   notifications.map((n) => (
                     <div key={n.id} className="notification-item">
-                      <div className="notif-icon">
-                        {n.type === "create" ? "✅" : "🗑️"}
-                      </div>
+                      <div className="notif-icon">{n.type === "create" ? "✅" : "🗑️"}</div>
                       <div className="notif-content">
                         <span>{n.message}</span>
-                        <small>{n.time}</small>
+                        <small>{new Date(n.timestamp).toLocaleString()}</small>
                       </div>
                     </div>
                   ))
