@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import CreateChannel from "./CreateChannel";
 import ChannelList from "./ChannelList";
 import AdminPanel from "./AdminPanel";
+import LiveChannelList from "./LiveChannelList"; // Import new component
 
 const NOTIF_KEY = 'ivs_platform_notifications';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -11,7 +12,7 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const [newChannel, setNewChannel] = useState(null);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState("channels");
+  const [activeTab, setActiveTab] = useState("management");
 
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem(NOTIF_KEY);
@@ -58,19 +59,22 @@ export default function Dashboard() {
         </div>
       </header>
       <main className="dashboard-content">
-        <div style={{display:'flex', gap:'16px', marginBottom:'24px', borderBottom:'1px solid #e2e8f0', paddingBottom:'16px'}}>
-          <button className={`btn ${activeTab === 'channels' ? 'btn-primary' : 'btn-secondary'}`} style={{width:'auto'}} onClick={() => setActiveTab('channels')}>Channels</button>
+        <div style={{display:'flex', gap:'16px', marginBottom:'24px', borderBottom:'1px solid #e2e8f0', paddingBottom:'16px', flexWrap:'wrap'}}>
+          <button className={`btn ${activeTab === 'management' ? 'btn-primary' : 'btn-secondary'}`} style={{width:'auto'}} onClick={() => setActiveTab('management')}>Channel Management</button>
+          <button className={`btn ${activeTab === 'live' ? 'btn-primary' : 'btn-secondary'}`} style={{width:'auto', background: activeTab==='live' ? '#dc2626' : '', borderColor: activeTab==='live' ? '#dc2626' : ''}} onClick={() => setActiveTab('live')}>🔴 Live Channels</button>
           {user?.role === 'admin' && <button className={`btn ${activeTab === 'admin' ? 'btn-primary' : 'btn-secondary'}`} style={{width:'auto'}} onClick={() => setActiveTab('admin')}>User Management</button>}
         </div>
 
-        {activeTab === 'channels' ? (
+        {activeTab === 'management' && (
           <>
-            <CreateChannel onCreated={handleChannelCreated} />
-            <ChannelList newChannel={newChannel} addNotification={addNotification} />
+            {user?.role === 'admin' && <CreateChannel onCreated={handleChannelCreated} />}
+            <ChannelList newChannel={newChannel} addNotification={addNotification} userRole={user?.role} isLiveOnly={false} />
           </>
-        ) : (
-          <AdminPanel />
         )}
+        
+        {activeTab === 'live' && <LiveChannelList />}
+
+        {activeTab === 'admin' && <AdminPanel />}
       </main>
     </div>
   );
