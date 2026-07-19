@@ -10,6 +10,7 @@ export default function ChannelCard({ channel, onDelete }) {
       <div className="channel-details">
         <div className="channel-detail"><span className="label">ID</span><span className="value">{channel.id}</span></div>
         <div className="channel-detail"><span className="label">Ingest</span><span className="value" style={{fontSize:'12px'}}>{channel.ingestEndpoint}</span></div>
+        <div className="channel-detail" style={{gridColumn: '1 / -1'}}><span className="label">Playback URL</span><span className="value"><a href={channel.playbackUrl} target="_blank" rel="noreferrer">{channel.playbackUrl}</a></span></div>
       </div>
       {channel.streamKey && (
         <div className="stream-key-section">
@@ -17,7 +18,9 @@ export default function ChannelCard({ channel, onDelete }) {
           {showKey && <div className="stream-key-value visible"><span className="key">{channel.streamKey.value}</span></div>}
         </div>
       )}
-      <div className="channel-card-actions"><button className="btn btn-sm btn-danger" onClick={() => onDelete(channel.arn, channel.region)}>Delete</button></div>
+      <div className="channel-card-actions">
+        <button className="btn btn-sm btn-danger" onClick={() => onDelete(channel)}>Delete</button>
+      </div>
     </div>
   );
 }
