@@ -1,4 +1,4 @@
-import { CreateChannelCommand, ListChannelsCommand, DeleteChannelCommand, BatchGetChannelCommand } from "@aws-sdk/client-ivs";
+import { CreateChannelCommand, ListChannelsCommand, DeleteChannelCommand, GetChannelCommand } from "@aws-sdk/client-ivs";
 import { createIVSClient } from "../config/aws.js";
 
 class IVSService {
@@ -20,24 +20,22 @@ class IVSService {
         return { success: true, data: { channels: [] } };
       }
 
-      // 2. Extract just the ARNs
-      const arns = listRes.channels.map(ch => ch.arn);
-
-      // 3. Fetch FULL details for all channels at once
-      const detailRes = await client.send(new BatchGetChannelCommand({ arns }));
-      
-      // 4. Map the full details to our frontend format
-      const channels = detailRes.channels.map(ch => ({
-        arn: ch.arn, 
-        id: ch.channelId, 
-        name: ch.name, 
-        region, 
-        state: ch.state, 
-        ingestEndpoint: ch.ingestEndpoint, 
-        playbackUrl: ch.playbackUrl, 
-        streamKey: null, // AWS never returns stream keys on list/get, only on create
-        createdAt: ch.createdAt 
-      }));
+      const channels = [];
+      // 2. Fetch full details for EACH channel one by one (100% reliable)
+      for (const ch of listRes.channels) {
+        const detailRes = await client.send(new GetChannelCommand({ arn: ch.arn }));
+        channels.push({
+          arn: detailRes.channel.arn, 
+          id: detailRes.channel.channelId, 
+          name: detailRes.channel.name, 
+          region, 
+          state: detailRes.channel.state, 
+          ingestEndpoint: detailRes.channel.ingestEndpoint, 
+          playbackUrl: detailRes.channel.playbackUrl, 
+          streamKey: null, 
+          createdAt: ch.createdAt 
+        });
+      }
       
       return { success: true, data: { channels } };
     } catch (e) { return { success: false, error: e.message }; }
