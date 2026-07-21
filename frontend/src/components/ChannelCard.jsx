@@ -1,129 +1,85 @@
 import { useState } from "react";
-import { Copy, Check, ExternalLink, AlertTriangle, Trash2, Eye, EyeOff } from "lucide-react";
+import { Check, Copy, ExternalLink, Eye, EyeOff, Globe, Trash2 } from "lucide-react";
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-950/30"
       title="Copy to clipboard"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="h-3.5 w-3.5 text-orange-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
 }
 
 export default function ChannelCard({ channel, onDelete, userRole }) {
   const [showKey, setShowKey] = useState(false);
-  const systemTags = ['CreatedBy'];
-  const customTags = Object.keys(channel.tags || {}).filter(t => !systemTags.includes(t));
+  const systemTags = ["CreatedBy"];
+  const customTags = Object.entries(channel.tags || {}).filter(([key]) => !systemTags.includes(key));
   const createdBy = channel.tags?.CreatedBy || "Unknown";
 
   return (
-    <div className="saas-card p-5 flex flex-col">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+    <div className="saas-card flex flex-col p-5">
+      <div className="mb-4 flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">{channel.name || "Unnamed"}</h4>
-          <span className="inline-flex items-center gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
-            <Globe className="w-3 h-3" />
-            {channel.region}
+          <h4 className="truncate text-sm font-semibold text-slate-900 dark:text-white">{channel.name || "Unnamed"}</h4>
+          <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Globe className="h-3 w-3" /> {channel.region}
           </span>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-3 ${
-          channel.state === 'LIVE'
-            ? 'bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400'
-            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-        }`}>
-          {channel.state === 'LIVE' && <span className="live-dot" />}
+        <span className={`ml-3 inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${channel.state === "LIVE" ? "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"}`}>
+          {channel.state === "LIVE" && <span className="live-dot" />}
           {channel.state}
         </span>
       </div>
 
-      {/* Details grid */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4 text-xs">
-        <div>
-          <span className="text-slate-400 dark:text-slate-500 block mb-0.5">Created By</span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">{createdBy}</span>
-        </div>
-        <div>
-          <span className="text-slate-400 dark:text-slate-500 block mb-0.5">Created</span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">{channel.createdAt ? new Date(channel.createdAt).toLocaleDateString() : "N/A"}</span>
-        </div>
+      <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+        <Detail label="Channel type" value={(channel.type || "STANDARD").replaceAll("_", " ")} />
+        <Detail label="Video latency" value={channel.latencyMode === "NORMAL" ? "Standard" : "Low"} />
+        <Detail label="Created by" value={createdBy} />
+        <Detail label="Created" value={(channel.createdAt || channel.creationTime || channel.created) ? new Date(channel.createdAt || channel.creationTime || channel.created).toLocaleString() : "N/A"} />
       </div>
 
-      {/* Tags */}
       {customTags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {customTags.map(tag => (
-            <span key={tag} className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-md text-xs font-medium">
-              #{tag}
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {customTags.map(([key, value]) => (
+            <span key={key} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400" title={value || "No value"}>
+              {key}{value ? `: ${value}` : ""}
             </span>
           ))}
         </div>
       )}
 
-      {/* URLs */}
-      <div className="space-y-2 mb-4">
-        <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider w-16 flex-shrink-0">Ingest</span>
-          <span className="text-xs text-slate-600 dark:text-slate-300 truncate flex-1 font-mono">{channel.ingestEndpoint || "N/A"}</span>
-          {channel.ingestEndpoint && <CopyButton text={channel.ingestEndpoint} />}
-        </div>
-        <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider w-16 flex-shrink-0">Playback</span>
-          {channel.playbackUrl ? (
-            <>
-              <a href={channel.playbackUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-600 dark:text-emerald-400 truncate flex-1 font-mono hover:underline">
-                {channel.playbackUrl}
-              </a>
-              <a href={channel.playbackUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <CopyButton text={channel.playbackUrl} />
-            </>
-          ) : (
-            <span className="text-xs text-slate-400">N/A</span>
-          )}
-        </div>
+      <div className="mb-4 space-y-2">
+        <UrlRow label="Ingest" value={channel.ingestEndpoint} />
+        <UrlRow label="Playback" value={channel.playbackUrl} external />
       </div>
 
-      {/* Stream key section */}
       {channel.streamKey ? (
-        <div className="p-3 bg-slate-900 dark:bg-slate-950 rounded-lg mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-slate-400">Stream Key</span>
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              {showKey ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Show</>}
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">Stream key</span>
+            <button type="button" onClick={() => setShowKey((current) => !current)} className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
+              {showKey ? <><EyeOff className="h-3.5 w-3.5" /> Hide</> : <><Eye className="h-3.5 w-3.5" /> Show</>}
             </button>
           </div>
-          {showKey && (
-            <div className="flex items-center gap-2 p-2 bg-slate-800 rounded">
-              <code className="text-xs text-emerald-400 font-mono truncate flex-1">{channel.streamKey.value}</code>
-              <CopyButton text={channel.streamKey.value} />
-            </div>
-          )}
+          {showKey && <div className="mt-2 flex items-center gap-2"><code className="min-w-0 flex-1 truncate text-xs text-amber-900 dark:text-amber-200">{channel.streamKey.value}</code><CopyButton text={channel.streamKey.value} /></div>}
         </div>
       ) : (
-        <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg mb-4">
-          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-          <span className="text-xs text-amber-700 dark:text-amber-400">Stream key is only shown once when created.</span>
-        </div>
+        <p className="mb-4 text-xs text-slate-400">Stream key is only shown once when the channel is created.</p>
       )}
 
-      {/* Actions */}
-      {userRole === 'admin' && (
-        <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
-          <button
-            onClick={() => onDelete(channel)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Delete Channel
+      {userRole === "admin" && (
+        <div className="mt-auto border-t border-slate-100 pt-3 dark:border-slate-800">
+          <button type="button" onClick={() => onDelete(channel)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30">
+            <Trash2 className="h-3.5 w-3.5" /> Delete channel
           </button>
         </div>
       )}
@@ -131,10 +87,15 @@ export default function ChannelCard({ channel, onDelete, userRole }) {
   );
 }
 
-function Globe(props) {
+function Detail({ label, value }) {
+  return <div><span className="mb-0.5 block text-slate-400 dark:text-slate-500">{label}</span><span className="font-medium capitalize text-slate-700 dark:text-slate-300">{value || "N/A"}</span></div>;
+}
+
+function UrlRow({ label, value, external = false }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
-    </svg>
+    <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/50">
+      <span className="w-16 flex-shrink-0 text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</span>
+      {value ? <><span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600 dark:text-slate-300">{value}</span>{external && <a href={value} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-orange-600"><ExternalLink className="h-3.5 w-3.5" /></a>}<CopyButton text={value} /></> : <span className="text-xs text-slate-400">N/A</span>}
+    </div>
   );
 }

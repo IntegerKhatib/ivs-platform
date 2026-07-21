@@ -1,232 +1,301 @@
-import { useState, useEffect, useRef } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import CreateChannel from "./CreateChannel";
 import ChannelList from "./ChannelList";
 import AdminPanel from "./AdminPanel";
 import LiveChannelList from "./LiveChannelList";
+import Monitoring from "./Monitoring";
+import Recordings from "./Recordings";
 import {
-  Play, LayoutDashboard, Radio, Users, LogOut, Bell,
-  PanelLeftClose, PanelLeft, Sun, Moon, CheckCircle2,
-  Trash2, ChevronDown, X
+  Activity, AlertTriangle, ArrowUpRight, Bell, CheckCircle2, ChevronDown, CircleUserRound, Clapperboard,
+  Download, Eye, FolderArchive, Gauge, HardDrive, Info, LayoutDashboard, LogOut, Moon, PanelLeftClose,
+  PanelLeftOpen, Play, Radio, RefreshCw, Sun, Trash2, UserCog, Users,
 } from "lucide-react";
 
-const NOTIF_KEY = 'ivs_platform_notifications';
+const NOTIF_KEY = "emp_platform_notifications";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const SUPPORTED_REGIONS = ["us-east-1", "us-west-2", "eu-west-1"];
+
+function MetricCard({ label, value, description, icon: Icon }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="mt-3 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{value}</p>
+        </div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notifications = [] }) {
+  const [stats, setStats] = useState({ total: 0, live: 0, viewers: 0, regions: 0, users: 0, admins: 0, standardUsers: 0 });
+  const [regionData, setRegionData] = useState([]);
+  const [liveStreams, setLiveStreams] = useState([]);
+  const [viewerHistory, setViewerHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      const token = localStorage.getItem("token");
+      try {
+        const channelResponses = await Promise.all(SUPPORTED_REGIONS.map(async (region) => {
+          const response = await fetch(`/api/channels?region=${region}`, { headers: { Authorization: `Bearer ${token}` } });
+          const data = await response.json();
+          return { region, channels: data.success ? data.data.channels || [] : [] };
+        }));
+        const metricResponses = await Promise.all(SUPPORTED_REGIONS.map(async (region) => {
+          const response = await fetch(`/api/channels/metrics?region=${region}`, { headers: { Authorization: `Bearer ${token}` } });
+          const data = await response.json();
+          return data.success ? { region, ...data.data } : { region, liveChannels: 0, totalViewers: 0, streams: [] };
+        }));
+        let users = [];
+        if (currentUser?.role === "admin") {
+          const response = await fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } });
+          const data = await response.json();
+          if (data.success) users = data.data || [];
+        }
+        if (cancelled) return;
+        const channels = channelResponses.flatMap((entry) => entry.channels.map((channel) => ({ ...channel, region: channel.region || entry.region })));
+        const streamRows = metricResponses.flatMap((metric) => (metric.streams || []).map((stream) => {
+          const channel = channels.find((item) => item.arn === stream.channelArn);
+          return { ...stream, region: metric.region, name: channel?.name || stream.channelArn?.split("/").pop() || "Live channel" };
+        }));
+        const live = metricResponses.reduce((sum, item) => sum + Number(item.liveChannels || 0), 0);
+        const viewers = metricResponses.reduce((sum, item) => sum + Number(item.totalViewers || 0), 0);
+        const admins = users.filter((item) => item.role === "admin").length;
+        const regionRows = channelResponses.map((entry, index) => ({
+          region: entry.region,
+          total: entry.channels.length,
+          live: Number(metricResponses[index]?.liveChannels || 0),
+          viewers: Number(metricResponses[index]?.totalViewers || 0),
+        }));
+        setStats({ total: channels.length, live, viewers, regions: regionRows.filter((item) => item.total > 0).length, users: users.length, admins, standardUsers: users.length - admins });
+        setRegionData(regionRows);
+        setLiveStreams(streamRows);
+        const now = Date.now();
+        const stored = (() => { try { return JSON.parse(localStorage.getItem("emp_viewer_history") || "[]"); } catch { return []; } })();
+        const next = [...stored.filter((item) => now - item.time < 24 * 60 * 60 * 1000), { time: now, viewers }].slice(-48);
+        localStorage.setItem("emp_viewer_history", JSON.stringify(next));
+        setViewerHistory(next);
+        setLastUpdated(new Date());
+      } catch (error) {
+        console.error("Unable to load dashboard data", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [refreshKey, currentUser?.role]);
+
+  const maxRegion = Math.max(1, ...regionData.map((item) => item.total));
+  const chartPoints = viewerHistory.length > 1 ? viewerHistory : [{ time: Date.now() - 3600000, viewers: 0 }, { time: Date.now(), viewers: stats.viewers }];
+  const maxViewer = Math.max(1, ...chartPoints.map((item) => item.viewers));
+  const width = 800, height = 210, pad = 24;
+  const points = chartPoints.map((item, index) => {
+    const x = pad + (index / Math.max(1, chartPoints.length - 1)) * (width - pad * 2);
+    const y = height - pad - (item.viewers / maxViewer) * (height - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const areaPoints = `${pad},${height - pad} ${points} ${width - pad},${height - pad}`;
+  const regionNames = { "us-east-1": "US East", "us-west-2": "US West", "eu-west-1": "EU Ireland" };
+  const activity = notifications.slice(0, 5);
+  const display = (value) => loading ? "—" : value;
+
+  const exportCsv = () => {
+    const rows = [["timestamp", "viewers"], ...viewerHistory.map((item) => [new Date(item.time).toISOString(), item.viewers])];
+    const blob = new Blob([rows.map((row) => row.join(",")).join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "emp-viewer-traffic.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Stream operations overview</h2>
+          <p className="mt-1 text-sm text-slate-500">Live traffic, regional capacity, stream health, and platform activity.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastUpdated && <span className="hidden text-xs text-slate-400 md:inline">Updated {lastUpdated.toLocaleTimeString()}</span>}
+          <button onClick={onRefresh} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <MetricCard label="Created channels" value={display(stats.total)} description="Configured channels" icon={Clapperboard} />
+        <MetricCard label="Live now" value={display(stats.live)} description="Currently broadcasting" icon={Radio} />
+        <MetricCard label="Current viewers" value={display(stats.viewers)} description="Concurrent sessions" icon={Eye} />
+        <MetricCard label="Active regions" value={display(stats.regions)} description="Regions in use" icon={Activity} />
+        <MetricCard label="Platform users" value={currentUser?.role === "admin" ? display(stats.users) : "Restricted"} description="Admins and users" icon={Users} />
+        <MetricCard label="Administrators" value={currentUser?.role === "admin" ? display(stats.admins) : "Restricted"} description="Management access" icon={UserCog} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:col-span-2">
+          <div className="flex items-start justify-between gap-4">
+            <div><h3 className="font-semibold text-slate-900 dark:text-white">Viewer traffic</h3><p className="mt-1 text-xs text-slate-500">Concurrent viewers captured by EMP during the last 24 hours</p></div>
+            <div className="flex gap-2"><span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">24h</span><button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3.5 w-3.5" />Export</button></div>
+          </div>
+          <div className="mt-5 overflow-hidden">
+            <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" preserveAspectRatio="none" aria-label="Viewer traffic chart">
+              {[0.25, 0.5, 0.75, 1].map((ratio) => <line key={ratio} x1={pad} y1={height - pad - ratio * (height - pad * 2)} x2={width - pad} y2={height - pad - ratio * (height - pad * 2)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="4 4" />)}
+              <polygon points={areaPoints} fill="rgba(249,115,22,0.12)" />
+              <polyline points={points} fill="none" stroke="#f97316" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <div className="flex justify-between text-[10px] text-slate-400"><span>{new Date(chartPoints[0].time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><span>Current: {stats.viewers} viewers</span><span>{new Date(chartPoints.at(-1).time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="font-semibold text-slate-900 dark:text-white">Regional footprint</h3>
+          <p className="mt-1 text-xs text-slate-500">Channels and current viewers per region</p>
+          <div className="mt-7 space-y-5">
+            {regionData.map((item) => <div key={item.region}>
+              <div className="mb-2 flex items-center justify-between text-xs"><span className="font-medium text-slate-700 dark:text-slate-300">{regionNames[item.region] || item.region}</span><span className="text-slate-400">{item.total} ch · {item.viewers.toLocaleString()} viewers</span></div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.max(item.total ? 8 : 0, (item.total / maxRegion) * 100)}%` }} /></div>
+            </div>)}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:col-span-2">
+          <div className="flex items-start justify-between">
+            <div><h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">Live now <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" /></h3><p className="mt-1 text-xs text-slate-500">{stats.live} stream(s) currently broadcasting</p></div>
+            <button onClick={() => onNavigate("live")} className="inline-flex items-center gap-1 text-sm font-semibold text-orange-600 hover:text-orange-700">View all <ArrowUpRight className="h-4 w-4" /></button>
+          </div>
+          <div className="mt-5 space-y-3">
+            {loading ? <div className="py-10 text-center text-sm text-slate-400">Loading live streams…</div> : liveStreams.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400 dark:border-slate-700">No channels are live right now.</div> : liveStreams.slice(0, 5).map((stream) => {
+              const healthy = String(stream.health).toUpperCase() === "HEALTHY";
+              return <div key={stream.channelArn} className="flex flex-col gap-3 rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500 dark:bg-red-950/40"><Radio className="h-5 w-5" /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{stream.name}</p><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{stream.region}</span></div><div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500"><span className="inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" />{Number(stream.viewerCount || 0).toLocaleString()} viewers</span><span className={healthy ? "font-semibold text-emerald-600" : "font-semibold text-amber-600"}>{healthy ? "HEALTHY" : stream.health || "UNKNOWN"}</span></div></div></div>
+                <button onClick={() => onNavigate("monitoring")} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Inspect</button>
+              </div>;
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="font-semibold text-slate-900 dark:text-white">Recent activity</h3><p className="mt-1 text-xs text-slate-500">Workspace audit highlights</p>
+          <div className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
+            {activity.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">No recent activity.</div> : activity.map((item) => {
+              const isWarning = item.type === "warning" || item.type === "error";
+              const Icon = isWarning ? AlertTriangle : item.type === "create" ? CheckCircle2 : Info;
+              return <div key={item.id} className="flex gap-3 py-3 first:pt-0"><div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${isWarning ? "bg-amber-50 text-amber-500" : "bg-orange-50 text-orange-500"}`}><Icon className="h-4 w-4" /></div><div className="min-w-0"><p className="text-xs leading-5 text-slate-700 dark:text-slate-300">{item.message}</p><p className="mt-0.5 text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</p></div></div>;
+            })}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+function MamPlaceholder() {
+  return <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"><div><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800"><FolderArchive className="h-7 w-7 text-slate-400" /></div><h2 className="mt-4 text-lg font-semibold text-slate-800 dark:text-slate-100">EMP MAMBridge</h2><p className="mt-2 text-sm text-slate-500 dark:text-slate-400">This module is reserved for future media asset management features.</p></div></div>;
+}
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [newChannel, setNewChannel] = useState(null);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState("management");
+  const routeToTab = { "/": "overview", "/overview": "overview", "/channels": "channels", "/live-channels": "live", "/monitoring": "monitoring", "/recordings": "recordings", "/mambridge": "mam", "/user-management": "admin" };
+  const tabToRoute = { overview: "/overview", channels: "/channels", live: "/live-channels", monitoring: "/monitoring", recordings: "/recordings", mam: "/mambridge", admin: "/user-management" };
+  const [activeTab, setActiveTabState] = useState(() => routeToTab[window.location.pathname] || "overview");
+  const [manualRefreshKey, setManualRefreshKey] = useState(0);
+  const navigate = (tab) => {
+    setActiveTabState(tab);
+    const path = tabToRoute[tab] || "/overview";
+    if (window.location.pathname !== path) window.history.pushState({ tab }, "", path);
+  };
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const notifRef = useRef(null);
   const userMenuRef = useRef(null);
-
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem(NOTIF_KEY);
-    if (saved) return JSON.parse(saved).filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
-    return [];
+    if (!saved) return [];
+    try { return JSON.parse(saved).filter((item) => Date.now() - item.timestamp < SEVEN_DAYS_MS); } catch { return []; }
   });
 
-  // Dark mode toggle
+  useEffect(() => { document.documentElement.classList.toggle("dark", darkMode); }, [darkMode]);
+  useEffect(() => { const onPopState = () => setActiveTabState(routeToTab[window.location.pathname] || "overview"); window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
+  useEffect(() => { localStorage.setItem(NOTIF_KEY, JSON.stringify(notifications.filter((item) => Date.now() - item.timestamp < SEVEN_DAYS_MS))); }, [notifications]);
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
-
-  useEffect(() => {
-    const clean = notifications.filter(n => (Date.now() - n.timestamp) < SEVEN_DAYS_MS);
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(clean));
-  }, [notifications]);
-
-  // Close dropdowns on outside click
-  useEffect(() => {
-    const handler = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifMenu(false);
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false);
+    const handler = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) setShowNotifMenu(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) setShowUserMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const addNotification = (message, type = "success") => {
-    setNotifications((prev) => [{ id: Date.now(), message, type, timestamp: Date.now() }, ...prev]);
-  };
+  const addNotification = (message, type = "success") => setNotifications((previous) => [{ id: Date.now(), message, type, timestamp: Date.now() }, ...previous]);
+  const handleChannelCreated = (channel) => { setNewChannel(channel); addNotification(`Channel "${channel.name}" created in ${channel.region}.`, "create"); };
 
-  const handleChannelCreated = (ch) => {
-    setNewChannel(ch);
-    addNotification(`Channel "${ch.name}" created in ${ch.region}.`, "create");
-  };
-
-  const navItems = [
-    { id: "management", label: "Channels", icon: LayoutDashboard },
-    { id: "live", label: "Live Now", icon: Radio },
-    ...(user?.role === 'admin' ? [{ id: "admin", label: "Users", icon: Users }] : []),
+  const sections = [
+    { title: "EMP Modules", groups: [
+      { label: "EMP StreamBridge", icon: Play, items: [{ id: "overview", label: "Overview", icon: Gauge }, { id: "channels", label: "Channels", icon: LayoutDashboard }, { id: "live", label: "Live Channels", icon: Radio }, { id: "monitoring", label: "Monitoring", icon: Activity }, { id: "recordings", label: "Recordings", icon: HardDrive }] },
+      { label: "EMP MAMBridge", icon: FolderArchive, items: [{ id: "mam", label: "EMP MAMBridge", icon: FolderArchive }] },
+    ]},
+    ...(user?.role === "admin" ? [{ title: "EMP Management", groups: [{ label: "Administration", icon: CircleUserRound, items: [{ id: "admin", label: "User Management", icon: Users }] }] }] : []),
   ];
+  const pageTitles = { overview: "Overview", channels: "Channels", live: "Live Channels", monitoring: "Monitoring", recordings: "Recordings", mam: "EMP MAMBridge", admin: "User Management" };
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
-      {/* Sidebar */}
-      <aside className={`${sidebarCollapsed ? 'w-[72px]' : 'w-64'} bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col flex-shrink-0 transition-all duration-300`}>
-        {/* Logo */}
-        <div className="h-16 flex items-center px-4 border-b border-slate-100 dark:border-slate-800 gap-3">
-          <div className="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Play className="w-4 h-4 text-white fill-white" />
-          </div>
-          {!sidebarCollapsed && (
-            <span className="font-bold text-slate-900 dark:text-white text-base whitespace-nowrap">IVS Platform</span>
-          )}
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <aside className={`${sidebarCollapsed ? "w-[76px]" : "w-72"} flex flex-shrink-0 flex-col border-r border-slate-200 bg-slate-950 text-white transition-all duration-300`}>
+        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-4">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-orange-500"><Play className="h-5 w-5 fill-white" /></div>
+          {!sidebarCollapsed && <div className="min-w-0"><p className="truncate text-sm font-bold">EMP</p><p className="text-[10px] text-slate-400">Enhanced Media Platform</p></div>}
         </div>
-
-        {/* Nav items */}
-        <nav className="flex-1 p-3 space-y-1">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
-                {!sidebarCollapsed && <span>{item.label}</span>}
-              </button>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto p-3">
+          {sections.map((section, index) => <div key={section.title} className={index ? "mt-7" : ""}>
+            {!sidebarCollapsed && <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{section.title}</p>}
+            <div className="space-y-4">{section.groups.map((group) => <div key={group.label}>
+              {!sidebarCollapsed && <div className="mb-1.5 flex items-center gap-2 px-3 text-xs font-semibold text-slate-300">{createElement(group.icon, { className: "h-4 w-4 text-orange-400" })}{group.label}</div>}
+              <div className="space-y-1">{group.items.map((item) => <button key={item.id} onClick={() => navigate(item.id)} title={sidebarCollapsed ? item.label : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}>{createElement(item.icon, { className: "h-5 w-5 flex-shrink-0" })}{!sidebarCollapsed && item.label}</button>)}</div>
+            </div>)}</div>
+          </div>)}
         </nav>
-
-        {/* Sidebar footer */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800">
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            {sidebarCollapsed ? <PanelLeft className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
-            {!sidebarCollapsed && <span>Collapse</span>}
-          </button>
-        </div>
+        {!sidebarCollapsed && <div className="px-4 pb-3 text-[10px] text-slate-500">By Broadcast Solutions Group</div>}
+        <div className="border-t border-white/10 p-3"><button onClick={() => setSidebarCollapsed((value) => !value)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-white/5 hover:text-white">{sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}{!sidebarCollapsed && "Collapse panel"}</button></div>
       </aside>
 
-      {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top header */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 flex-shrink-0">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-            {activeTab === 'management' && 'Channel Management'}
-            {activeTab === 'live' && 'Live Channels'}
-            {activeTab === 'admin' && 'User Management'}
-          </h1>
-
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-20 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
+          <div><h1 className="text-xl font-bold text-slate-900 dark:text-white">{pageTitles[activeTab]}</h1><p className="hidden text-xs text-slate-400 sm:block">EMP · Enhanced Media Platform</p></div>
           <div className="flex items-center gap-2">
-            {/* Dark mode toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Toggle theme"
-            >
-              {darkMode ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
-            </button>
-
-            {/* Notifications */}
-            <div className="relative" ref={notifRef}>
-              <button
-                onClick={() => setShowNotifMenu(!showNotifMenu)}
-                className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative"
-              >
-                <Bell className="w-[18px] h-[18px]" />
-                {notifications.length > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center min-w-[18px] h-[18px]">
-                    {notifications.length}
-                  </span>
-                )}
-              </button>
-
-              {showNotifMenu && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden z-50">
-                  <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                    <span className="text-sm font-semibold text-slate-900 dark:text-white">Notifications</span>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto custom-scrollbar">
-                    {notifications.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-sm text-slate-400">No notifications yet</div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div key={n.id} className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 flex-shrink-0">
-                              {n.type === "create" ? (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                              ) : (
-                                <Trash2 className="w-4 h-4 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-slate-700 dark:text-slate-300">{n.message}</p>
-                              <p className="text-xs text-slate-400 mt-1">{new Date(n.timestamp).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+            <button onClick={() => setDarkMode((value) => !value)} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">{darkMode ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}</button>
+            <div className="relative" ref={notifRef}><button onClick={() => setShowNotifMenu((value) => !value)} className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><Bell className="h-[18px] w-[18px]" />{notifications.length > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">{notifications.length}</span>}</button>
+              {showNotifMenu && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"><div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold dark:border-slate-800">Notifications</div><div className="max-h-72 overflow-y-auto">{notifications.length === 0 ? <div className="px-4 py-8 text-center text-sm text-slate-400">No notifications yet</div> : notifications.map((notification) => <div key={notification.id} className="border-b border-slate-100 px-4 py-3 last:border-0 dark:border-slate-800"><div className="flex items-start gap-3">{notification.type === "create" ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-orange-500" /> : <Trash2 className="mt-0.5 h-4 w-4 text-slate-400" />}<div><p className="text-sm text-slate-700 dark:text-slate-300">{notification.message}</p><p className="mt-1 text-xs text-slate-400">{new Date(notification.timestamp).toLocaleString()}</p></div></div></div>)}</div></div>}
             </div>
-
-            {/* User menu */}
-            <div className="relative ml-2" ref={userMenuRef}>
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 rounded-full flex items-center justify-center text-sm font-semibold">
-                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                </div>
-                <div className="hidden sm:block text-left">
-                  <div className="text-sm font-medium text-slate-900 dark:text-white leading-tight">{user?.name}</div>
-                  <div className="text-xs text-slate-400">{user?.email}</div>
-                </div>
-                <ChevronDown className="w-4 h-4 text-slate-400" />
-              </button>
-
-              {showUserMenu && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden z-50">
-                  <button
-                    onClick={logout}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+            <div className="relative ml-2" ref={userMenuRef}><button onClick={() => setShowUserMenu((value) => !value)} className="flex items-center gap-2.5 rounded-xl py-1.5 pl-2 pr-3 hover:bg-slate-100 dark:hover:bg-slate-800"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-sm font-bold text-orange-700">{user?.name?.charAt(0)?.toUpperCase() || "U"}</div><div className="hidden text-left sm:block"><p className="max-w-32 truncate text-xs font-semibold text-slate-800 dark:text-slate-200">{user?.name}</p><p className="max-w-32 truncate text-[10px] text-slate-400">{user?.role}</p></div><ChevronDown className="h-4 w-4 text-slate-400" /></button>{showUserMenu && <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-800 dark:bg-slate-900"><button onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"><LogOut className="h-4 w-4" />Sign out</button></div>}</div>
           </div>
         </header>
-
-        {/* Main content */}
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          {activeTab === 'management' && (
-            <>
-              {user?.role === 'admin' && <CreateChannel onCreated={handleChannelCreated} />}
-              <ChannelList newChannel={newChannel} addNotification={addNotification} userRole={user?.role} isLiveOnly={false} />
-            </>
-          )}
-
-          {activeTab === 'live' && <LiveChannelList />}
-
-          {activeTab === 'admin' && <AdminPanel />}
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+          {activeTab === "overview" && <Overview refreshKey={`${newChannel?.arn || newChannel?.id || ""}-${manualRefreshKey}`} onNavigate={navigate} onRefresh={() => setManualRefreshKey((value) => value + 1)} currentUser={user} notifications={notifications} />}
+          {activeTab === "channels" && <>{user?.role === "admin" && <CreateChannel onCreated={handleChannelCreated} />}<ChannelList newChannel={newChannel} addNotification={addNotification} userRole={user?.role} /></>}
+          {activeTab === "live" && <LiveChannelList userRole={user?.role} />}
+          {activeTab === "monitoring" && <Monitoring refreshKey={manualRefreshKey} />}
+          {activeTab === "recordings" && <Recordings userRole={user?.role} />}
+          {activeTab === "mam" && <MamPlaceholder />}
+          {activeTab === "admin" && user?.role === "admin" && <AdminPanel />}
         </main>
       </div>
     </div>
