@@ -41,7 +41,6 @@ function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notification
   const [viewerHistory, setViewerHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [trafficRange, setTrafficRange] = useState("24h");
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +84,7 @@ function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notification
         setLiveStreams(streamRows);
         const now = Date.now();
         const stored = (() => { try { return JSON.parse(localStorage.getItem("emp_viewer_history") || "[]"); } catch { return []; } })();
-        const next = [...stored.filter((item) => now - item.time < 30 * 24 * 60 * 60 * 1000), { time: now, viewers }].slice(-1500);
+        const next = [...stored.filter((item) => now - item.time < 24 * 60 * 60 * 1000), { time: now, viewers }].slice(-48);
         localStorage.setItem("emp_viewer_history", JSON.stringify(next));
         setViewerHistory(next);
         setLastUpdated(new Date());
@@ -100,10 +99,7 @@ function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notification
   }, [refreshKey, currentUser?.role]);
 
   const maxRegion = Math.max(1, ...regionData.map((item) => item.total));
-  const trafficRanges = { "1h": { label: "1 hour", ms: 60 * 60 * 1000 }, "6h": { label: "6 hours", ms: 6 * 60 * 60 * 1000 }, "24h": { label: "24 hours", ms: 24 * 60 * 60 * 1000 }, "7d": { label: "7 days", ms: 7 * 24 * 60 * 60 * 1000 }, "30d": { label: "30 days", ms: 30 * 24 * 60 * 60 * 1000 } };
-  const selectedRange = trafficRanges[trafficRange];
-  const filteredViewerHistory = viewerHistory.filter((item) => Date.now() - item.time <= selectedRange.ms);
-  const chartPoints = filteredViewerHistory.length > 1 ? filteredViewerHistory : [{ time: Date.now() - selectedRange.ms, viewers: 0 }, { time: Date.now(), viewers: stats.viewers }];
+  const chartPoints = viewerHistory.length > 1 ? viewerHistory : [{ time: Date.now() - 3600000, viewers: 0 }, { time: Date.now(), viewers: stats.viewers }];
   const maxViewer = Math.max(1, ...chartPoints.map((item) => item.viewers));
   const width = 800, height = 210, pad = 24;
   const points = chartPoints.map((item, index) => {
@@ -117,7 +113,7 @@ function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notification
   const display = (value) => loading ? "—" : value;
 
   const exportCsv = () => {
-    const rows = [["timestamp", "viewers"], ...filteredViewerHistory.map((item) => [new Date(item.time).toISOString(), item.viewers])];
+    const rows = [["timestamp", "viewers"], ...viewerHistory.map((item) => [new Date(item.time).toISOString(), item.viewers])];
     const blob = new Blob([rows.map((row) => row.join(",")).join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -154,8 +150,8 @@ function Overview({ refreshKey, onNavigate, currentUser, onRefresh, notification
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:col-span-2">
           <div className="flex items-start justify-between gap-4">
-            <div><h3 className="font-semibold text-slate-900 dark:text-white">Viewer traffic</h3><p className="mt-1 text-xs text-slate-500">Concurrent viewers captured during the last {selectedRange.label}</p></div>
-            <div className="flex flex-wrap justify-end gap-2"><div className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">{Object.entries(trafficRanges).map(([key, option]) => <button key={key} type="button" onClick={() => setTrafficRange(key)} className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${trafficRange === key ? "bg-white text-orange-600 shadow-sm dark:bg-slate-700 dark:text-orange-400" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"}`}>{key}</button>)}</div><button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3.5 w-3.5" />Export</button></div>
+            <div><h3 className="font-semibold text-slate-900 dark:text-white">Viewer traffic</h3><p className="mt-1 text-xs text-slate-500">Concurrent viewers captured by EMP during the last 24 hours</p></div>
+            <div className="flex gap-2"><span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">24h</span><button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3.5 w-3.5" />Export</button></div>
           </div>
           <div className="mt-5 overflow-hidden">
             <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" preserveAspectRatio="none" aria-label="Viewer traffic chart">
@@ -218,27 +214,8 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const [newChannel, setNewChannel] = useState(null);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
-  const routeToTab = {
-  "/": "overview",
-  "/overview": "overview",
-  "/events": "channels",
-  "/channels": "channels",
-  "/live-events": "live",
-  "/live-channels": "live",
-  "/monitoring": "monitoring",
-  "/recordings": "recordings",
-  "/mambridge": "mam",
-  "/user-management": "admin",
-};
-  const tabToRoute = {
-  overview: "/overview",
-  channels: "/events",
-  live: "/live-events",
-  monitoring: "/monitoring",
-  recordings: "/recordings",
-  mam: "/mambridge",
-  admin: "/user-management",
-};
+  const routeToTab = { "/": "overview", "/overview": "overview", "/channels": "channels", "/live-channels": "live", "/monitoring": "monitoring", "/recordings": "recordings", "/mambridge": "mam", "/user-management": "admin" };
+  const tabToRoute = { overview: "/overview", channels: "/channels", live: "/live-channels", monitoring: "/monitoring", recordings: "/recordings", mam: "/mambridge", admin: "/user-management" };
   const [activeTab, setActiveTabState] = useState(() => routeToTab[window.location.pathname] || "overview");
   const [manualRefreshKey, setManualRefreshKey] = useState(0);
   const navigate = (tab) => {
@@ -274,17 +251,16 @@ export default function Dashboard() {
 
   const sections = [
     { title: "EMP Modules", groups: [
-      { label: "EMP StreamBridge", icon: Play, items: [{ id: "overview", label: "Overview", icon: Gauge }, { id: "channels", label: "Events", icon: LayoutDashboard }, { id: "live", label: "Live Events", icon: Radio }, { id: "monitoring", label: "Monitoring", icon: Activity }, { id: "recordings", label: "VOD Recordings", icon: HardDrive }] },
+      { label: "EMP StreamBridge", icon: Play, items: [{ id: "overview", label: "Overview", icon: Gauge }, { id: "channels", label: "Events", icon: LayoutDashboard }, { id: "live", label: "Live Event Streams", icon: Radio }, { id: "monitoring", label: "Monitoring", icon: Activity }, { id: "recordings", label: "VOD Recordings", icon: HardDrive }] },
       { label: "EMP MAMBridge", icon: FolderArchive, items: [{ id: "mam", label: "EMP MAMBridge", icon: FolderArchive }] },
     ]},
-    ...(user?.role === "admin" ? [{ title: "Administration", groups: [{ label: "Administration", icon: CircleUserRound, items: [{ id: "admin", label: "User Management", icon: Users }] }] }] : []),
+    ...(user?.role === "admin" ? [{ title: "EMP Management", groups: [{ label: "Administration", icon: CircleUserRound, items: [{ id: "admin", label: "User Management", icon: Users }] }] }] : []),
   ];
-  const pageTitles = { overview: "Overview", channels: "Events", live: "Live Events", monitoring: "Monitoring", recordings: "VOD Recordings", mam: "EMP MAMBridge", admin: "User Management" };
+  const pageTitles = { overview: "Overview", channels: "Events", live: "Live Event Streams", monitoring: "Monitoring", recordings: "VOD Recordings", mam: "EMP MAMBridge", admin: "User Management" };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <aside className={`${sidebarCollapsed ? "w-[72px]" : "w-52"} flex flex-shrink-0 flex-col border-r border-slate-200 bg-slate-950 text-white transition-all duration-300`}>
-        
+      <aside className={`${sidebarCollapsed ? "w-[76px]" : "w-56"} flex flex-shrink-0 flex-col border-r border-slate-200 bg-slate-950 text-white transition-all duration-300`}>
         <div className="flex h-20 items-center gap-3 border-b border-white/10 px-4">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-orange-500"><Play className="h-5 w-5 fill-white" /></div>
           {!sidebarCollapsed && <div className="min-w-0"><p className="truncate text-sm font-bold">EMP</p><p className="text-[10px] text-slate-400">Enhanced Media Platform</p></div>}

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Building2, Eye, EyeOff, Play, ShieldCheck } from "lucide-react";
+import broadcastSolutionsLogo from "../assets/broadcast-solutions-logo.jpg";
+
 export default function Login() {
   const { login, error } = useAuth();
   const [email, setEmail] = useState("admin@example.com");
@@ -39,7 +41,7 @@ export default function Login() {
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-orange-300">
             Enterprise media operations
           </span>
-          
+          <img src={broadcastSolutionsLogo} alt="Broadcast Solutions" className="mx-auto mb-5 h-24 w-auto object-contain sm:h-28" />
             <h1 className="mt-6 text-5xl font-bold leading-tight">Manage live media workflows from one secure platform.</h1>
           <p className="mt-6 max-w-lg text-lg leading-8 text-slate-300">
             Create, monitor, and operate contribution channels through a unified SaaS experience designed for media teams.

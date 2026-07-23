@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Building2, Eye, EyeOff, Play, ShieldCheck } from "lucide-react";
+
 export default function Login() {
   const { login, error } = useAuth();
   const [email, setEmail] = useState("admin@example.com");
@@ -39,8 +40,7 @@ export default function Login() {
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-orange-300">
             Enterprise media operations
           </span>
-          
-            <h1 className="mt-6 text-5xl font-bold leading-tight">Manage live media workflows from one secure platform.</h1>
+          <h1 className="mt-6 text-5xl font-bold leading-tight">Manage live media workflows from one secure platform.</h1>
           <p className="mt-6 max-w-lg text-lg leading-8 text-slate-300">
             Create, monitor, and operate contribution channels through a unified SaaS experience designed for media teams.
           </p>
@@ -72,7 +72,7 @@ export default function Login() {
           <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
             <div className="mb-7">
               <p className="text-sm font-semibold text-orange-600">EMP</p>
-              <h2 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">Welcome to the EMP Platform</h2>
+              <h2 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">Welcome back</h2>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in to access the Enhanced Media Platform.</p>
             </div>
 
